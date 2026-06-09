@@ -13,15 +13,23 @@ from tests.conftest import make_creditcard_like
 
 
 @pytest.fixture(scope="module")
-def client(fitted_xgb):
-    reg = ModelRegistry()
-    if reg.champion_version("xgboost") is None:
-        reg.register(fitted_xgb, {"pr_auc": 0.7}, make_champion=True)
-
-    from fraud_platform.serving import api
-    api._load_champion()
-    with TestClient(api.app) as c:
-        yield c
+def client(fitted_xgb, tmp_path_factory):
+    # isolate the registry to a temp dir so tests never write into the real registry_store/
+    import os
+    reg_dir = tmp_path_factory.mktemp("registry")
+    prev = os.environ.get("FRAUD_REGISTRY_DIR")
+    os.environ["FRAUD_REGISTRY_DIR"] = str(reg_dir)
+    try:
+        ModelRegistry().register(fitted_xgb, {"pr_auc": 0.7}, make_champion=True)
+        from fraud_platform.serving import api
+        api._load_champion()
+        with TestClient(api.app) as c:
+            yield c
+    finally:
+        if prev is None:
+            os.environ.pop("FRAUD_REGISTRY_DIR", None)
+        else:
+            os.environ["FRAUD_REGISTRY_DIR"] = prev
 
 
 @pytest.fixture(scope="module")

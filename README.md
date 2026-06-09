@@ -115,46 +115,47 @@ libomp` for XGBoost. On Linux/Docker, `libgomp1` is installed and you can relax 
 
 ---
 
-## Results (populate by training on the real CSV)
+## Results (measured on the real Kaggle dataset)
 
-These are produced by `python3 -m fraud_platform.train` and written to
-`artifacts/evaluation_results.json` (50,000+ rows, stratified 60/20/20, seed 42). **Fill this
-table from your run** — it is intentionally left empty here because the numbers must come from
-the real dataset on your machine, not be quoted from elsewhere.
+Produced by `python3 -m fraud_platform.train` (full 284,807 rows, stratified 60/20/20, seed
+42; test set = 56,962 rows containing 98 fraud cases) and saved to
+`artifacts/evaluation_results.json`. Reproducible — the seed makes these deterministic.
 
 | model | precision | recall | F1 | ROC-AUC | PR-AUC |
 |-------|-----------|--------|------|---------|--------|
-| isolation_forest | _run_ | _run_ | _run_ | _run_ | _run_ |
-| xgboost | _run_ | _run_ | _run_ | _run_ | _run_ |
-| autoencoder | _run_ | _run_ | _run_ | _run_ | _run_ |
+| isolation_forest | 0.2632 | 0.3061 | 0.2830 | 0.9551 | 0.1490 |
+| **xgboost** | 0.9412 | 0.8163 | 0.8743 | 0.9788 | **0.8770** |
+| autoencoder | 0.5105 | 0.7449 | 0.6058 | 0.9577 | 0.5780 |
 
-**How to read them honestly:** the baseline PR-AUC for a random model equals the fraud rate
-(~0.0017). On this dataset, the supervised XGBoost is expected to lead clearly; the
-unsupervised models (Isolation Forest, autoencoder) typically trail because subtle fraud
-overlaps with normal spend. **Recall is the number to watch** — catching fraud — and it will
-trade off against precision; ROC-AUC will look high purely because of the imbalance.
+**How to read them honestly:**
+- The baseline PR-AUC for a random model equals the fraud rate, **~0.0017**. XGBoost's 0.877
+  is far above that; the autoencoder (0.578) is respectable for an unsupervised model;
+  Isolation Forest (0.149) is weak but still ~88× the random baseline.
+- **Recall is the headline number** — the fraction of real fraud caught. Supervised XGBoost
+  catches **82%** of fraud at 94% precision. The autoencoder catches **74%** but at only 51%
+  precision (more false alarms). Isolation Forest catches just **31%**.
+- **ROC-AUC is misleadingly high for every model (≥ 0.955)** purely because of the imbalance —
+  this is exactly why PR-AUC and recall are the metrics to trust here, not ROC-AUC.
+- Supervised clearly beats unsupervised when labels are available, as expected.
 
 ---
 
 ## Latency (measured)
 
 The API logs `inference_ms` per request and returns it in the response, so this is verifiable.
-
-Single-record scoring, 500 requests after warm-up, laptop (Apple Silicon, CPU only), on the
-**31-feature pipeline** (Time, V1–V28, Amount, log-Amount):
+Measured on the **real trained models**, single-record scoring, 500 requests after warm-up,
+laptop (Apple Silicon, CPU only):
 
 | path | mean | p95 | p99 |
 |------|------|-----|-----|
-| XGBoost `model.score` (incl. preprocessing) | 1.6 ms | 1.7 ms | 2.0 ms |
+| XGBoost `model.score` (incl. preprocessing) | 1.6 ms | 1.7 ms | 1.8 ms |
 | Autoencoder `model.score` | 1.5 ms | 1.6 ms | 1.7 ms |
 | Isolation Forest `model.score` | 5.6 ms | 5.8 ms | 5.9 ms |
+| **End-to-end `/predict`** (XGBoost, incl. HTTP) | **2.8 ms** | 3.0 ms | 3.4 ms |
 
-**Verdict: the "< 100ms per request" claim holds comfortably** (single request, single
-thread). These specific numbers were measured on the *fixture* dataframe (same schema, same
-model sizes) because they depend on feature count and model architecture, not on the actual
-values — so they're representative. **Confirm the exact figures on the real data after
-training**; the returned `inference_ms` makes that a one-request check. Sustained throughput
-under concurrency was not benchmarked — don't claim it.
+**Verdict: the "< 100ms per request" claim holds comfortably** — ~2.8ms end-to-end on a
+laptop, single request, single thread. The response includes `inference_ms` so you can verify
+it yourself. Sustained throughput under concurrency was not benchmarked — don't claim it.
 
 ---
 
@@ -242,8 +243,8 @@ promotion gate), drift (no-drift vs injected drift), evaluation metrics, and the
 | Imbalance handled: stratified split + `scale_pos_weight` (supervised), unsupervised framing for IF/AE | ✅ | Accurate to say "handled extreme imbalance"; the resampling used is class weighting, not SMOTE. |
 | 3 models behind a common, swappable interface | ✅ | Isolation Forest, XGBoost, PyTorch autoencoder. |
 | Preprocessing in a sklearn Pipeline, saved with the model, applied identically at inference | ✅ | Pipeline pickled inside each artifact. |
-| Reports precision/recall/F1/ROC-AUC/PR-AUC on a held-out test set | ✅ | Lead with PR-AUC/recall. **Quote numbers from your own run.** |
-| FastAPI `/predict`, measured per-request latency, **< 100ms** | ✅ | ~1.5–5.6ms/record on a laptop, single request. Don't claim high-concurrency throughput. |
+| Reports precision/recall/F1/ROC-AUC/PR-AUC on a held-out test set | ✅ | Measured: XGBoost PR-AUC 0.877, recall 0.82. Lead with PR-AUC/recall, not ROC-AUC. |
+| FastAPI `/predict`, measured per-request latency, **< 100ms** | ✅ | ~2.8ms end-to-end on a laptop, single request. Don't claim high-concurrency throughput. |
 | Local versioned model registry with metadata | ✅ | Call it "home-grown"; MLflow is the production choice. |
 | Retraining that promotes only if it beats the champion on a metric | ✅ | **Manual/scheduled** command with a PR-AUC gate — not streaming auto-retrain. |
 | Drift detection (PSI + KS) with documented thresholds | ✅ | |

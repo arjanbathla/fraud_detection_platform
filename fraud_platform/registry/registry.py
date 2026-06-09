@@ -20,6 +20,7 @@ In production you'd use MLflow (or similar): experiment tracking, a backing arti
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,7 +29,11 @@ from fraud_platform.models import ARTIFACT_EXT, load_model
 
 
 class ModelRegistry:
-    def __init__(self, root: str | Path = REGISTRY_DIR):
+    def __init__(self, root: str | Path | None = None):
+        # env var lets tests (and deployments) point at a different registry location,
+        # so running the test suite never writes into the real registry_store/
+        if root is None:
+            root = os.environ.get("FRAUD_REGISTRY_DIR", REGISTRY_DIR)
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.index_path = self.root / "index.json"

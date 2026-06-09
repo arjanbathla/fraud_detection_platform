@@ -11,3 +11,4 @@ venv/
 artifacts/data/
 registry_store/
 *.csv
+.DS_Store

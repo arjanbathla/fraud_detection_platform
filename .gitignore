@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# generated artifacts — reproducible by running train.py
+artifacts/data/
+registry_store/
+*.csv

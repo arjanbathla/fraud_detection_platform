@@ -1,34 +1,33 @@
 """Tests for the FastAPI serving layer.
 
 We register a small model into the default registry, then drive the app with TestClient so
-startup loads a real champion. The /predict assertions check the response schema, that a
-score comes back, and that the latency field is present and sane.
+startup loads a real champion. The /predict payload is a full creditcard-style record
+(Time, V1..V28, Amount) taken from a fixture row.
 """
 import pytest
 from fastapi.testclient import TestClient
 
+from fraud_platform.config import NUMERIC_FEATURES
 from fraud_platform.registry.registry import ModelRegistry
+from tests.conftest import make_creditcard_like
 
 
 @pytest.fixture(scope="module")
 def client(fitted_xgb):
-    # make sure there is an xgboost champion for the API to load
     reg = ModelRegistry()
     if reg.champion_version("xgboost") is None:
         reg.register(fitted_xgb, {"pr_auc": 0.7}, make_champion=True)
 
     from fraud_platform.serving import api
-    api._load_champion()  # reload state for this process
+    api._load_champion()
     with TestClient(api.app) as c:
         yield c
 
 
-SAMPLE = {
-    "amount": 920.50, "account_age_days": 45, "num_tx_last_24h": 11,
-    "avg_amount_last_30d": 80.0, "distance_from_home_km": 240.0, "hour": 3,
-    "merchant_category": "electronics", "transaction_type": "transfer",
-    "device_type": "web", "country": "NG",
-}
+@pytest.fixture(scope="module")
+def sample_payload():
+    row = make_creditcard_like(n=200, seed=3).iloc[0]
+    return {c: float(row[c]) for c in NUMERIC_FEATURES}
 
 
 def test_health(client):
@@ -46,8 +45,8 @@ def test_model_info(client):
     assert body["version"] >= 1
 
 
-def test_predict_schema_and_latency(client):
-    r = client.post("/predict", json=SAMPLE)
+def test_predict_schema_and_latency(client, sample_payload):
+    r = client.post("/predict", json=sample_payload)
     assert r.status_code == 200
     body = r.json()
     assert body["is_fraud"] in (0, 1)
@@ -57,15 +56,15 @@ def test_predict_schema_and_latency(client):
     assert isinstance(body["within_latency_budget"], bool)
 
 
-def test_predict_rejects_bad_input(client):
-    bad = dict(SAMPLE)
-    bad["hour"] = 99  # out of the 0-23 range -> validation error
+def test_predict_missing_field(client, sample_payload):
+    bad = dict(sample_payload)
+    del bad["Amount"]
     r = client.post("/predict", json=bad)
     assert r.status_code == 422
 
 
-def test_predict_missing_field(client):
-    bad = dict(SAMPLE)
-    del bad["amount"]
+def test_predict_rejects_non_numeric(client, sample_payload):
+    bad = dict(sample_payload)
+    bad["V1"] = "not_a_number"
     r = client.post("/predict", json=bad)
     assert r.status_code == 422

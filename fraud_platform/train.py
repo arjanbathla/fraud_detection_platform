@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 
 from fraud_platform.config import ARTIFACTS_DIR
-from fraud_platform.data.loader import data_hash, load_or_generate, split
+from fraud_platform.data.loader import data_hash, load_data, split
 from fraud_platform.evaluation.evaluate import (
     choose_threshold,
     comparison_table,
@@ -33,8 +33,9 @@ def train_one(model_type: str, X_train, y_train, X_val, y_val):
     return model
 
 
-def run(rows: int = 50_000, fraud_frac: float = 0.01, register: bool = True) -> dict:
-    df = load_or_generate(rows=rows, fraud_frac=fraud_frac)
+def run(data_path: str | None = None, register: bool = True) -> dict:
+    df = load_data(data_path) if data_path else load_data()
+    print(f"loaded {len(df):,} rows, fraud rate = {df['Class'].mean():.4%}")
     X_train, y_train, X_val, y_val, X_test, y_test = split(df)
     dh = data_hash(df)
 
@@ -52,7 +53,7 @@ def run(rows: int = 50_000, fraud_frac: float = 0.01, register: bool = True) -> 
             v = registry.register(model, metrics, data_hash=dh)
             print(f"registered {model_type} as v{v}")
 
-    print("\n[SYNTHETIC DATA] model comparison on held-out test set:")
+    print("\nmodel comparison on held-out test set (Kaggle creditcard.csv):")
     print(comparison_table(results))
     save_results({"data_hash": dh, "models": results},
                  ARTIFACTS_DIR / "evaluation_results.json")
@@ -62,11 +63,10 @@ def run(rows: int = 50_000, fraud_frac: float = 0.01, register: bool = True) -> 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Train + evaluate + register all models")
-    ap.add_argument("--rows", type=int, default=50_000)
-    ap.add_argument("--fraud-frac", type=float, default=0.01)
+    ap.add_argument("--data", type=str, default=None, help="path to creditcard.csv")
     ap.add_argument("--no-register", action="store_true")
     args = ap.parse_args()
-    run(rows=args.rows, fraud_frac=args.fraud_frac, register=not args.no_register)
+    run(data_path=args.data, register=not args.no_register)
 
 
 if __name__ == "__main__":

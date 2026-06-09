@@ -5,6 +5,10 @@ single transaction on /predict. Every request measures wall-clock inference time
 it as `inference_ms`, and the server also logs it — so the <100ms claim can be verified, not
 assumed. Default model type is XGBoost (configurable via the MODEL_TYPE env var).
 
+The request body is a creditcard.csv-style record: Time, V1..V28, Amount (30 numeric fields).
+The model expects exactly these columns; the Pydantic model is built from the dataset schema
+so it stays in sync with config.py.
+
 Run:
     uvicorn fraud_platform.serving.api:app --reload
 Endpoints:
@@ -21,13 +25,9 @@ from contextlib import asynccontextmanager
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, create_model
 
-from fraud_platform.config import (
-    CATEGORICAL_FEATURES,
-    LATENCY_BUDGET_MS,
-    NUMERIC_FEATURES,
-)
+from fraud_platform.config import LATENCY_BUDGET_MS, NUMERIC_FEATURES
 from fraud_platform.registry.registry import ModelRegistry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -38,39 +38,13 @@ MODEL_TYPE = os.environ.get("MODEL_TYPE", "xgboost")
 # loaded at startup; kept in module state so it's loaded once, not per request
 _STATE: dict = {"model": None, "version": None, "meta": None}
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    _load_champion()  # load the champion once when the server boots
-    yield
-
-
-app = FastAPI(title="Fraud Detection API (SYNTHETIC data)", version="1.0",
-              lifespan=lifespan)
-
-
-class Transaction(BaseModel):
-    amount: float = Field(..., ge=0)
-    account_age_days: float = Field(..., ge=0)
-    num_tx_last_24h: float = Field(..., ge=0)
-    avg_amount_last_30d: float = Field(..., ge=0)
-    distance_from_home_km: float = Field(..., ge=0)
-    hour: int = Field(..., ge=0, le=23)
-    merchant_category: str
-    transaction_type: str
-    device_type: str
-    country: str
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "amount": 920.50, "account_age_days": 45, "num_tx_last_24h": 11,
-                "avg_amount_last_30d": 80.0, "distance_from_home_km": 240.0, "hour": 3,
-                "merchant_category": "electronics", "transaction_type": "transfer",
-                "device_type": "web", "country": "NG",
-            }
-        }
-    }
+# Build the request schema from the dataset columns (Time, V1..V28, Amount) so it can't drift
+# from config.py. All fields are floats; an example of all-zeros gives /docs something valid.
+_FIELDS = {name: (float, ...) for name in NUMERIC_FEATURES}
+Transaction = create_model("Transaction", **_FIELDS)
+Transaction.model_config = {
+    "json_schema_extra": {"example": {name: 0.0 for name in NUMERIC_FEATURES}}
+}
 
 
 class PredictionResponse(BaseModel):
@@ -81,6 +55,16 @@ class PredictionResponse(BaseModel):
     model_version: int
     inference_ms: float
     within_latency_budget: bool
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _load_champion()  # load the champion once when the server boots
+    yield
+
+
+app = FastAPI(title="Fraud Detection API (Kaggle creditcard.csv)", version="1.0",
+              lifespan=lifespan)
 
 
 def _load_champion() -> None:
@@ -97,7 +81,7 @@ def _load_champion() -> None:
 
 @app.get("/")
 def root() -> dict:
-    return {"service": "fraud-detection (SYNTHETIC data)",
+    return {"service": "fraud-detection (Kaggle creditcard.csv)",
             "docs": "/docs",
             "endpoints": ["/health", "/model-info", "/predict"]}
 
@@ -122,8 +106,8 @@ def predict(tx: Transaction) -> PredictionResponse:
     if model is None:
         raise HTTPException(503, "no model loaded — run `python -m fraud_platform.train`")
 
-    # build a one-row dataframe with the exact raw columns the pipeline expects
-    row = {c: getattr(tx, c) for c in NUMERIC_FEATURES + CATEGORICAL_FEATURES}
+    # one-row dataframe with the exact columns the pipeline expects
+    row = {c: getattr(tx, c) for c in NUMERIC_FEATURES}
     df = pd.DataFrame([row])
 
     start = time.perf_counter()

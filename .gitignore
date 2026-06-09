@@ -4,6 +4,9 @@ __pycache__/
 .venv/
 venv/
 
+# Kaggle dataset is not committed (licence + 144MB) — download creditcard.csv into data/
+/data
+
 # generated artifacts — reproducible by running train.py
 artifacts/data/
 registry_store/

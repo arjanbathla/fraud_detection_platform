@@ -1,10 +1,13 @@
 # Container for the fraud detection API.
-# Build:  docker build -t fraud-platform .
-# Run:    docker run -p 8000:8000 fraud-platform
 #
-# The image trains the models at build time so the API has a champion to serve on startup.
-# (For a real deployment you'd instead bake in a registry from CI or mount it as a volume —
-#  training inside the image is a convenience for this demo so `docker run` just works.)
+# The Kaggle dataset is NOT shipped in the image (licensing + size). Mount it at runtime:
+#
+#   docker build -t fraud-platform .
+#   docker run -p 8000:8000 -v "$(pwd)/data:/app/data" fraud-platform
+#
+# On startup the entrypoint trains + registers the models if data/creditcard.csv is present
+# and no champion exists yet, then serves the API. If the CSV is missing it still starts, but
+# /predict returns 503 until you provide data and train.
 
 FROM python:3.11-slim
 
@@ -14,14 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
 
 WORKDIR /app
 
-# install deps first for better layer caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# generate data + train + register all three models into registry_store/
-RUN python -m fraud_platform.train --rows 50000 --fraud-frac 0.01
-
 EXPOSE 8000
-CMD ["uvicorn", "fraud_platform.serving.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["bash", "docker-entrypoint.sh"]

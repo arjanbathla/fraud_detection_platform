@@ -7,9 +7,9 @@ from fraud_platform.models import MODEL_TYPES, make_model
 
 
 @pytest.fixture(scope="module")
-def small_split(synth_df):
+def small_split(sample_df):
     from fraud_platform.data.loader import split
-    return split(synth_df, seed=7)
+    return split(sample_df, seed=7)
 
 
 @pytest.mark.parametrize("model_type", list(MODEL_TYPES))

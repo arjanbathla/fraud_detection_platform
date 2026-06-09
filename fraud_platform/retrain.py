@@ -21,7 +21,7 @@ from __future__ import annotations
 import argparse
 
 from fraud_platform.config import PROMOTION_METRIC
-from fraud_platform.data.loader import data_hash, load_or_generate, split
+from fraud_platform.data.loader import data_hash, load_data, split
 from fraud_platform.evaluation.evaluate import evaluate_model
 from fraud_platform.models import MODEL_TYPES
 from fraud_platform.registry.registry import ModelRegistry
@@ -64,7 +64,7 @@ def retrain_model(model_type: str, registry: ModelRegistry,
 
 def run(data_path: str | None = None, model: str | None = None,
         metric: str = PROMOTION_METRIC) -> list[dict]:
-    df = (load_or_generate(data_path) if data_path else load_or_generate())
+    df = load_data(data_path) if data_path else load_data()
     X_train, y_train, X_val, y_val, X_test, y_test = split(df)
     dh = data_hash(df)
     registry = ModelRegistry()

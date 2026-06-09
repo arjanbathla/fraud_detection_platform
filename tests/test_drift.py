@@ -1,10 +1,9 @@
 """Tests for drift detection (PSI + KS)."""
 import numpy as np
-import pandas as pd
 
 from fraud_platform.config import NUMERIC_FEATURES
-from fraud_platform.data.generate import generate
 from fraud_platform.monitoring.drift import compute_drift, psi, psi_band
+from tests.conftest import make_creditcard_like
 
 
 def test_psi_zero_for_identical():
@@ -27,24 +26,23 @@ def test_psi_band_labels():
 
 
 def test_no_drift_on_same_distribution():
-    a = generate(n_rows=4000, fraud_frac=0.02, seed=1)
-    b = generate(n_rows=4000, fraud_frac=0.02, seed=2)  # same process, different draw
+    a = make_creditcard_like(n=4000, seed=1)
+    b = make_creditcard_like(n=4000, seed=2)  # same process, different draw
     result = compute_drift(a, b)
-    # same generating process — should not flag significant drift on most features
-    assert result["n_features_flagged"] <= 1
+    assert result["n_features_flagged"] <= 2  # allow a little noise on 30 features
 
 
 def test_drift_detected_on_shifted_feature():
-    a = generate(n_rows=4000, fraud_frac=0.02, seed=1)
+    a = make_creditcard_like(n=4000, seed=1)
     b = a.copy()
-    b["amount"] = b["amount"] * 5 + 500  # inject a large shift
-    result = compute_drift(b_reference := a, current := b)
+    b["Amount"] = b["Amount"] * 5 + 500  # inject a large shift
+    result = compute_drift(a, b)
     assert result["drift_detected"] is True
-    assert result["features"]["amount"]["flagged"] is True
+    assert result["features"]["Amount"]["flagged"] is True
 
 
 def test_result_structure():
-    a = generate(n_rows=2000, fraud_frac=0.02, seed=1)
+    a = make_creditcard_like(n=2000, seed=1)
     result = compute_drift(a, a)
     assert set(result.keys()) == {"drift_detected", "n_features_flagged", "features"}
     for col in [c for c in NUMERIC_FEATURES if c in a.columns]:

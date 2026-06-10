@@ -19,9 +19,23 @@ dashboard. Runs on a laptop — no GPU, no paid cloud.
 data/creditcard.csv
 ```
 
-The platform does **not** generate synthetic data — it loads this CSV directly. (The pytest
-suite uses a small in-memory dataframe of the *same shape* purely as test scaffolding, clearly
-labelled as such in `tests/conftest.py`.)
+The platform does **not** generate synthetic data. The CSV is imported once into a local
+**SQLite** database (`data/creditcard.db`, table `transactions`) and everything — the data
+loader and the SQL EDA — queries from there rather than re-reading the 144MB CSV each run:
+
+```bash
+python3 -m fraud_platform.data.load_to_sqlite    # creditcard.csv -> data/creditcard.db
+python3 -m fraud_platform.data.eda               # 6 SQL profiling queries (see below)
+```
+
+(The pytest suite builds a small in-memory dataframe of the *same shape*, writes it to a temp
+SQLite db, and runs against that — clearly labelled as scaffolding in `tests/conftest.py`.)
+
+### SQL EDA
+[`fraud_platform/data/eda.py`](fraud_platform/data/eda.py) runs six profiling queries straight
+against SQLite: `class_balance`, `fraud_rate_by_hour`, `fraud_rate_by_day`,
+`amount_stats_by_class`, `amount_distribution_by_class`, and `high_value_share_by_class` —
+covering class imbalance, fraud rate over time, and fraud-vs-legit amount distributions.
 
 ### Honest note on the features — they are pre-PCA'd
 The columns are `Time`, `Amount`, `Class` (target), and `V1`–`V28`. **`V1`–`V28` are already
@@ -59,7 +73,9 @@ features — those raw features are not published. This has a direct, honest con
 ```
 fraud_platform/
 ├── config.py                  # schema (Time, V1-V28, Amount, Class), paths, thresholds
-├── data/loader.py             # load creditcard.csv + stratified split + hash (NO generation)
+├── data/load_to_sqlite.py     # one-off import: creditcard.csv -> SQLite (chunked)
+├── data/eda.py                # 6 SQL profiling queries (class balance, time, amounts)
+├── data/loader.py             # query SQLite + stratified split + hash (NO generation)
 ├── pipeline/features.py       # log-Amount + RobustScaler/StandardScaler ColumnTransformer
 ├── models/
 │   ├── base.py                # AnomalyModel ABC — the common interface
@@ -92,7 +108,8 @@ anomalous*, supervised or not.
 pip install -r requirements.txt           # see "macOS note" below if XGBoost fails to load
 
 # 1. put the Kaggle file at data/creditcard.csv  (the platform will NOT run without it)
-python3 -m fraud_platform.train           # load + train all 3 + evaluate + register
+python3 -m fraud_platform.data.load_to_sqlite   # import the CSV into data/creditcard.db
+python3 -m fraud_platform.train           # load from SQLite + train all 3 + evaluate + register
 python3 -m pytest -q                       # run the test suite (uses in-memory fixtures)
 
 python3 -m uvicorn fraud_platform.serving.api:app   # serve on http://localhost:8000  (try /docs)
@@ -104,8 +121,8 @@ python3 -m streamlit run dashboard/app.py           # dashboard (run the API fir
 docker build -t fraud-platform .
 docker run -p 8000:8000 -v "$(pwd)/data:/app/data" fraud-platform
 ```
-The dataset is mounted (not baked in). The entrypoint trains once if `data/creditcard.csv` is
-present and no registry exists, then serves.
+The dataset is mounted (not baked in). The entrypoint imports `data/creditcard.csv` into SQLite
+if the db isn't there, trains once if no registry exists, then serves.
 
 ### macOS note (OpenMP)
 PyTorch and XGBoost each ship an OpenMP runtime; running both multithreaded can segfault. The
@@ -185,8 +202,8 @@ or lineage graph.
 ## Automated retraining (gated promotion)
 
 ```bash
-python3 -m fraud_platform.retrain                        # retrain all on data/creditcard.csv
-python3 -m fraud_platform.retrain --data new_batch.csv   # retrain on a fresh batch
+python3 -m fraud_platform.retrain                        # retrain all on data/creditcard.db
+python3 -m fraud_platform.retrain --data new_batch.db    # retrain on a fresh batch
 python3 -m fraud_platform.retrain --model xgboost        # one model type
 ```
 

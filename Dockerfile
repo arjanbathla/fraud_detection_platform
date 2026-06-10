@@ -5,9 +5,9 @@
 #   docker build -t fraud-platform .
 #   docker run -p 8000:8000 -v "$(pwd)/data:/app/data" fraud-platform
 #
-# On startup the entrypoint trains + registers the models if data/creditcard.csv is present
-# and no champion exists yet, then serves the API. If the CSV is missing it still starts, but
-# /predict returns 503 until you provide data and train.
+# On startup the entrypoint imports data/creditcard.csv into SQLite (if needed), then trains +
+# registers the models if no champion exists yet, then serves the API. If the CSV is missing it
+# still starts, but /predict returns 503 until you provide data and train.
 
 FROM python:3.11-slim
 

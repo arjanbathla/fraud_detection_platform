@@ -6,11 +6,13 @@ only — the platform itself never generates data; it loads the real Kaggle CSV 
 fraud_platform.data.loader. Fraud rows here are shifted on a few V columns so the models have
 something to learn during tests.
 """
+import sqlite3
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from fraud_platform.config import PCA_FEATURES, TARGET
+from fraud_platform.config import DB_TABLE, PCA_FEATURES, TARGET
 
 
 def make_creditcard_like(n: int = 3000, fraud_frac: float = 0.05, seed: int = 7) -> pd.DataFrame:
@@ -33,9 +35,26 @@ def make_creditcard_like(n: int = 3000, fraud_frac: float = 0.05, seed: int = 7)
     return df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
 
 
+def write_db(df: pd.DataFrame, path, table: str = DB_TABLE) -> None:
+    """Dump a creditcard-shaped dataframe into a SQLite file (TEST USE ONLY)."""
+    conn = sqlite3.connect(path)
+    try:
+        df.to_sql(table, conn, if_exists="replace", index=False)
+    finally:
+        conn.close()
+
+
 @pytest.fixture(scope="session")
 def sample_df():
     return make_creditcard_like(n=3000, fraud_frac=0.05, seed=7)
+
+
+@pytest.fixture
+def sample_db(tmp_path, sample_df):
+    """A small SQLite db loaded from sample_df, for loader/EDA tests."""
+    p = tmp_path / "creditcard.db"
+    write_db(sample_df, p)
+    return p
 
 
 @pytest.fixture(scope="session")

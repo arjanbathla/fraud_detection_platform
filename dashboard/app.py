@@ -9,7 +9,7 @@ Four panels:
 Run the API first (uvicorn fraud_platform.serving.api:app), then:
     streamlit run dashboard/app.py
 
-Needs data/creditcard.csv present (Kaggle download).
+Needs the SQLite db built first (python -m fraud_platform.data.load_to_sqlite).
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-from fraud_platform.config import ARTIFACTS_DIR, CREDITCARD_CSV, NUMERIC_FEATURES, TARGET
+from fraud_platform.config import ARTIFACTS_DIR, CREDITCARD_DB, NUMERIC_FEATURES, TARGET
 from fraud_platform.data.loader import load_data, split
 from fraud_platform.monitoring.drift import compute_drift
 
@@ -48,8 +48,9 @@ st.caption("Data: Kaggle 'Credit Card Fraud Detection' (creditcard.csv). Feature
 
 df = get_data()
 if df is None:
-    st.error(f"creditcard.csv not found at {CREDITCARD_CSV}. "
-             "Download it from Kaggle and place it in the data/ folder.")
+    st.error(f"SQLite db not found at {CREDITCARD_DB}. "
+             "Build it with: python -m fraud_platform.data.load_to_sqlite "
+             "(needs the Kaggle creditcard.csv in data/).")
     st.stop()
 
 tab_eda, tab_models, tab_score, tab_drift = st.tabs(

@@ -1,7 +1,7 @@
 """Automated retraining with a promotion gate.
 
     python -m fraud_platform.retrain                      # retrain on default data
-    python -m fraud_platform.retrain --data new_batch.csv # retrain on a fresh batch
+    python -m fraud_platform.retrain --data new_batch.db  # retrain on a fresh batch
     python -m fraud_platform.retrain --model xgboost      # just one model type
 
 WHAT TRIGGERS A RETRAIN (be accurate about this on a CV):
@@ -79,7 +79,7 @@ def run(data_path: str | None = None, model: str | None = None,
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Retrain + gated promotion")
-    ap.add_argument("--data", type=str, default=None, help="path to a new data CSV")
+    ap.add_argument("--data", type=str, default=None, help="path to a SQLite db for the new batch")
     ap.add_argument("--model", type=str, default=None, help="single model type to retrain")
     ap.add_argument("--metric", type=str, default=PROMOTION_METRIC)
     args = ap.parse_args()

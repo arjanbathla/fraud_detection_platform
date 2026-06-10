@@ -63,7 +63,7 @@ def run(data_path: str | None = None, register: bool = True) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Train + evaluate + register all models")
-    ap.add_argument("--data", type=str, default=None, help="path to creditcard.csv")
+    ap.add_argument("--data", type=str, default=None, help="path to the SQLite db")
     ap.add_argument("--no-register", action="store_true")
     args = ap.parse_args()
     run(data_path=args.data, register=not args.no_register)

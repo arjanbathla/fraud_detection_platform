@@ -20,6 +20,8 @@ ARTIFACTS_DIR = ROOT / "artifacts"
 REGISTRY_DIR = ROOT / "registry_store"
 DATA_DIR = ROOT / "data"
 CREDITCARD_CSV = DATA_DIR / "creditcard.csv"
+CREDITCARD_DB = DATA_DIR / "creditcard.db"   # SQLite store the platform actually loads from
+DB_TABLE = "transactions"
 
 for _d in (ARTIFACTS_DIR, REGISTRY_DIR, DATA_DIR):
     _d.mkdir(parents=True, exist_ok=True)
